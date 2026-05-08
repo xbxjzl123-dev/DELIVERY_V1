@@ -282,6 +282,37 @@
   }
   .status.ok { display: block; background: #d1f5e0; color: #0a6b32; }
   .status.err { display: block; background: #ffe5e5; color: #b00020; }
+
+  /* 토스트 메시지 - 가운데 떴다 사라짐 */
+  .toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+    background: rgba(30, 30, 32, 0.92);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 500;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+    z-index: 1000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    max-width: 85vw;
+    text-align: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .toast .toast-icon {
+    display: inline-block;
+    margin-right: 6px;
+  }
 </style>
 </head>
 <body>
@@ -324,7 +355,7 @@
 
   <!-- 받는 업체 -->
   <div class="field">
-    <label class="label">받는 업체<span class="req">*</span><span class="hint">여러 곳 선택 가능 · Enter로 추가</span></label>
+    <label class="label">받는 업체(수신처)<span class="req">*</span><span class="hint">여러 곳 선택 가능 · Enter로 추가</span></label>
     <div class="chip-area" id="chip-area">
       <input type="text" id="receiver-input" placeholder="업체명 입력 후 Enter (목록에 없어도 OK)" autocomplete="off" />
     </div>
@@ -333,14 +364,14 @@
 
   <!-- 제품 내용 -->
   <div class="field">
-    <label class="label">제품 내용<span class="req">*</span></label>
+    <label class="label">제품 내용<span class="hint">미입력 시 '공구'로 자동 입력</span></label>
     <div class="quick-row">
       <button type="button" class="quick-btn" data-add="볼트">+ 볼트</button>
       <button type="button" class="quick-btn" data-add="수공구">+ 수공구</button>
       <button type="button" class="quick-btn" data-add="작업공구">+ 작업공구</button>
       <button type="button" class="quick-btn" data-add="절삭공구">+ 절삭공구</button>
     </div>
-    <textarea id="product" placeholder="제품 내용을 입력하세요"></textarea>
+    <textarea id="product" placeholder="비워두면 '공구'로 자동 입력됩니다"></textarea>
   </div>
 
   <!-- 배송방법 + 박스 -->
@@ -372,6 +403,9 @@
   <div class="status" id="status"></div>
 
 </div>
+
+<!-- 토스트 메시지 (가운데 떴다 사라짐) -->
+<div class="toast" id="toast"></div>
 
 <script>
   // ========================================================================
@@ -510,20 +544,58 @@
     };
   });
 
-  // 최근 입력 (브라우저 메모리에만 저장 - 새로고침하면 사라짐)
+  // 자동 선택 - 시간대별 배송방법 + 박스 수량 기본값
+  function applyDefaults() {
+    const n = new Date();
+    const h = n.getHours();
+    const m = n.getMinutes();
+    const totalMin = h * 60 + m;
+    // 08:00 ~ 12:00 → 기사님편(오전)
+    // 12:01 ~ 17:30 → 택배 합포장(오후)
+    const morningStart = 8 * 60;       // 08:00
+    const morningEnd   = 12 * 60;      // 12:00
+    const afternoonEnd = 17 * 60 + 30; // 17:30
+
+    let defaultMethod = null;
+    if (totalMin >= morningStart && totalMin <= morningEnd) {
+      defaultMethod = '기사님편(오전)';
+    } else if (totalMin > morningEnd && totalMin <= afternoonEnd) {
+      defaultMethod = '택배 합포장(오후)';
+    }
+    // 그 외 시간대 (이른 새벽 / 야간)는 자동 선택 없이 사용자가 직접 선택
+
+    if (defaultMethod) {
+      const btn = document.querySelector(`.seg-btn[data-group="method"][data-val="${defaultMethod}"]`);
+      if (btn) {
+        document.querySelectorAll('.seg-btn[data-group="method"]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        methodVal = defaultMethod;
+      }
+    }
+
+    // 박스 수량 - 시간 상관없이 항상 1로 기본 선택
+    const box1 = document.querySelector('.seg-btn[data-group="box"][data-val="1"]');
+    if (box1) {
+      document.querySelectorAll('.seg-btn[data-group="box"]').forEach(b => b.classList.remove('active'));
+      box1.classList.add('active');
+      boxVal = '1';
+    }
+  }
+  applyDefaults();
+
   // 제출
   const submitBtn = document.getElementById('submit-btn');
   const statusEl = document.getElementById('status');
 
   submitBtn.onclick = async () => {
     const sender = senderInput.value.trim();
-    const product = productArea.value.trim();
+    // 제품 내용 비어있으면 자동으로 '공구'
+    const product = productArea.value.trim() || '공구';
 
-    if (!sender) { showStatus('보내는 업체를 입력해주세요', 'err'); senderInput.focus(); return; }
-    if (receivers.size === 0) { showStatus('받는 업체를 선택해주세요', 'err'); receiverInput.focus(); return; }
-    if (!product) { showStatus('제품 내용을 입력해주세요', 'err'); productArea.focus(); return; }
-    if (!methodVal) { showStatus('배송 방법을 선택해주세요', 'err'); return; }
-    if (!boxVal) { showStatus('박스 수량을 선택해주세요', 'err'); return; }
+    if (!sender) { showToast('보내는 업체를 입력해주세요'); senderInput.focus(); return; }
+    if (receivers.size === 0) { showToast('받는 업체(수신처)를 선택해주세요'); receiverInput.focus(); return; }
+    if (!methodVal) { showToast('배송 방법을 선택해주세요'); return; }
+    if (!boxVal) { showToast('박스 수량을 선택해주세요'); return; }
 
     const payload = {
       sender,
@@ -554,7 +626,7 @@
       doReset(false);
 
     } catch (err) {
-      showStatus('⚠ 전송 실패: ' + err.message, 'err');
+      showToast('전송 실패: ' + err.message, '❌');
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = '배송 의뢰 등록';
@@ -569,6 +641,18 @@
     }
   }
 
+  // 토스트 메시지 (가운데 떴다 사라짐)
+  const toastEl = document.getElementById('toast');
+  let toastTimer = null;
+  function showToast(msg, icon = '⚠️') {
+    toastEl.innerHTML = `<span class="toast-icon">${icon}</span>${msg}`;
+    toastEl.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      toastEl.classList.remove('show');
+    }, 1800);
+  }
+
   function doReset(showMsg = true) {
     senderInput.value = '';
     productArea.value = '';
@@ -577,6 +661,8 @@
     renderChips();
     methodVal = ''; boxVal = '';
     document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    // 초기화 후에도 자동 선택값 다시 적용
+    applyDefaults();
     if (showMsg) statusEl.className = 'status';
   }
 
