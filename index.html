@@ -588,6 +588,11 @@
   const statusEl = document.getElementById('status');
 
   submitBtn.onclick = async () => {
+    // 받는 업체 입력칸에 입력 중인 텍스트가 남아있으면 자동으로 칩에 추가
+    if (receiverInput.value.trim()) {
+      addReceiverFreeForm();
+    }
+
     const sender = senderInput.value.trim();
     // 제품 내용 비어있으면 자동으로 '공구'
     const product = productArea.value.trim() || '공구';
