@@ -313,6 +313,109 @@
     display: inline-block;
     margin-right: 6px;
   }
+
+  /* 등록 성공 모달 - 큰 확인창 (어르신 잘 보이게) */
+  .success-modal {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+  }
+  .success-modal.show { display: flex; }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  .success-card {
+    background: #fff;
+    border-radius: 20px;
+    padding: 32px 24px 24px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes popIn {
+    from { transform: scale(0.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .success-check {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #34c759;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(52, 199, 89, 0.35);
+    animation: checkPop 0.4s 0.1s both cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes checkPop {
+    from { transform: scale(0); }
+    to { transform: scale(1); }
+  }
+  .success-check svg {
+    width: 44px;
+    height: 44px;
+    color: #fff;
+  }
+  .success-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1d1d1f;
+    margin: 0 0 8px;
+  }
+  .success-subtitle {
+    font-size: 15px;
+    color: #515154;
+    margin: 0 0 18px;
+    line-height: 1.5;
+  }
+  .success-detail {
+    background: #f5f5f7;
+    border-radius: 12px;
+    padding: 14px 16px;
+    text-align: left;
+    font-size: 14px;
+    line-height: 1.7;
+    margin-bottom: 20px;
+    color: #1d1d1f;
+  }
+  .success-detail .row {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .success-detail .key {
+    color: #86868b;
+    flex: 0 0 70px;
+    font-weight: 500;
+  }
+  .success-detail .val {
+    flex: 1;
+    font-weight: 600;
+    word-break: break-all;
+  }
+  .success-btn {
+    width: 100%;
+    padding: 14px;
+    background: #007aff;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .success-btn:active { opacity: 0.7; }
 </style>
 </head>
 <body>
@@ -407,6 +510,21 @@
 <!-- 토스트 메시지 (가운데 떴다 사라짐) -->
 <div class="toast" id="toast"></div>
 
+<!-- 등록 성공 모달 (어르신 잘 보이게 큰 확인창) -->
+<div class="success-modal" id="success-modal" role="dialog" aria-modal="true">
+  <div class="success-card">
+    <div class="success-check">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </div>
+    <h2 class="success-title">등록 완료!</h2>
+    <p class="success-subtitle">배송 의뢰가 정상적으로 접수되었습니다</p>
+    <div class="success-detail" id="success-detail"></div>
+    <button type="button" class="success-btn" id="success-close-btn">확인</button>
+  </div>
+</div>
+
 <script>
   // ========================================================================
   // ⚠️ 여기에 본인의 Google Apps Script 웹 앱 URL을 붙여넣으세요!
@@ -414,12 +532,31 @@
   // ========================================================================
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwfUbYJJ6NlFXQyB-wWdPpPZHrR2WXXU27rIWJbQENyXez_25Uy1kxwYDmq4qZqzuXkfw/exec';
 
-  const COMPANIES = [
+  // 받는 업체(수신처) 자동완성 목록 - 우리가 자주 보내는 거래처
+  const RECEIVERS = [
     '영우툴링','상신툴링(병점)','원영상사','엘엠툴스','대성금형공구(천안)',
     '상신툴링(오산)','에스씨툴링','공신툴링(평택)','초경툴','서림툴링',
     '상보송림동','보령툴링','다영툴링','강민툴링','NTS','원일공구',
     '미래상사(광주)','태영인더스트리','유진상사','씨에스툴링','금영공구정공',
     '테크툴링','한길툴링(화성)','왕삼아공구','공구백화점','정진툴링'
+  ];
+
+  // 보내는 업체(발송처) 자동완성 목록 - 우리가 자주 받는 거래처 (실사용 데이터 기반)
+  const SENDERS = [
+    'B.R.T','강남종합상사','계수브러쉬','공구광장','구로상사','국제기구',
+    '나노테크툴','다현자석','대성금형공구','대신툴스','덕명','동남툴스',
+    '동산체인모터','동신상사','동신유니온','동양연마테크','동영툴링','동우교역',
+    '동우테크툴','동화툴테크','라온','라온하이텍','로얄초경','리더툴링',
+    '명진다이아몬드','몰드메이트','미래종합','백제티에스','비알티','비알티툴링',
+    '삼우정밀','삼원상사','삼정씰링','상명상사','상보이엔지','성환공구',
+    '세이지상사','세진티앤에스','시앤케이툴','신기','신신종합상사','신화기기',
+    '아시아야금','아이비코퍼레이션','에이스금형','엘토','영우툴링','오리엔트',
+    '우일정밀','원영상사','위딘','유림싸이겐','윤전기계','이공구','이공구센타',
+    '인코일','일신','전진티티에스','정상툴스','제이엘월드','제일연마',
+    '지원툴링','진양','진양자석','진일종합상사','창인','천안대성금형공구',
+    '케이비시스템','케이엠툴링','태성','태성피앤티','평화','포스','포스툴링',
+    '플러스','플러스종합상사','하디스코리아','하이툴','한빛티엔에스','현대공구',
+    '현대상공사','협창인더스','화승기공','흥덕산업'
   ];
 
   // 시간 표시
@@ -434,12 +571,12 @@
   setInterval(updateTime, 30000);
 
   // 자동완성 공통
-  function setupAutocomplete(input, suggestBox, onPick, getExclude) {
+  function setupAutocomplete(input, suggestBox, sourceList, onPick, getExclude) {
     input.addEventListener('input', () => {
       const q = input.value.trim();
       const exclude = getExclude ? getExclude() : [];
       if (!q) { suggestBox.style.display='none'; return; }
-      const matches = COMPANIES.filter(c =>
+      const matches = sourceList.filter(c =>
         c.toLowerCase().includes(q.toLowerCase()) && !exclude.includes(c)
       );
       if (matches.length === 0) { suggestBox.style.display='none'; return; }
@@ -458,9 +595,9 @@
     input.addEventListener('blur', () => setTimeout(() => suggestBox.style.display='none', 150));
   }
 
-  // 발송처 자동완성
+  // 발송처 자동완성 (SENDERS 사용)
   const senderInput = document.getElementById('sender');
-  setupAutocomplete(senderInput, document.getElementById('sender-suggest'),
+  setupAutocomplete(senderInput, document.getElementById('sender-suggest'), SENDERS,
     val => { senderInput.value = val; });
 
   // 받는 업체 (다중)
@@ -479,7 +616,7 @@
       chipArea.insertBefore(chip, receiverInput);
     });
   }
-  setupAutocomplete(receiverInput, document.getElementById('receiver-suggest'),
+  setupAutocomplete(receiverInput, document.getElementById('receiver-suggest'), RECEIVERS,
     val => {
       receivers.add(val);
       receiverInput.value = '';
@@ -626,7 +763,16 @@
       const now = new Date();
       const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
-      showStatus(`✓ 등록 완료! (${timeStr})  스프레드시트에서 확인하세요.`, 'ok');
+      // 성공 모달 표시 (어르신 잘 보이게 큰 확인창)
+      showSuccessModal({
+        time: timeStr,
+        sender: payload.sender,
+        receivers: payload.receivers,
+        product: payload.product,
+        method: payload.method,
+        box: payload.box
+      });
+
       // 폼 초기화
       doReset(false);
 
@@ -637,6 +783,40 @@
       submitBtn.textContent = '배송 의뢰 등록';
     }
   };
+
+  // 등록 성공 모달
+  const successModal = document.getElementById('success-modal');
+  const successDetail = document.getElementById('success-detail');
+  const successCloseBtn = document.getElementById('success-close-btn');
+  let successAutoCloseTimer = null;
+
+  function showSuccessModal(data) {
+    successDetail.innerHTML = `
+      <div class="row"><span class="key">시간</span><span class="val">${data.time}</span></div>
+      <div class="row"><span class="key">발송처</span><span class="val">${data.sender}</span></div>
+      <div class="row"><span class="key">수신처</span><span class="val">${data.receivers}</span></div>
+      <div class="row"><span class="key">제품</span><span class="val">${data.product}</span></div>
+      <div class="row"><span class="key">배송</span><span class="val">${data.method}</span></div>
+      <div class="row"><span class="key">박스</span><span class="val">${data.box}개</span></div>
+    `;
+    successModal.classList.add('show');
+    // 3초 후 자동 닫기
+    if (successAutoCloseTimer) clearTimeout(successAutoCloseTimer);
+    successAutoCloseTimer = setTimeout(hideSuccessModal, 3000);
+  }
+
+  function hideSuccessModal() {
+    successModal.classList.remove('show');
+    if (successAutoCloseTimer) {
+      clearTimeout(successAutoCloseTimer);
+      successAutoCloseTimer = null;
+    }
+  }
+  successCloseBtn.onclick = hideSuccessModal;
+  successModal.addEventListener('click', (e) => {
+    // 바깥 영역 클릭 시 닫기
+    if (e.target === successModal) hideSuccessModal();
+  });
 
   function showStatus(msg, type) {
     statusEl.textContent = msg;
