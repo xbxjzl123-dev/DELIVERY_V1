@@ -61,8 +61,7 @@
     0%, 100% { transform: translate(-50%, 0); }
     50%      { transform: translate(-50%, -8px); }
   }
-}
-@media (prefers-reduced-motion: reduce) {
+  @media (prefers-reduced-motion: reduce) {
     .em { animation: none !important; }
   }
   .header h1 {
@@ -416,6 +415,19 @@
     font-family: inherit;
   }
   .success-btn:active { opacity: 0.7; }
+
+  /* 초성 검색 안내 */
+  .cho-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 9px;
+    background: #e8f1ff;
+    color: #0051d5;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: 1px;
+  }
 </style>
 </head>
 <body>
@@ -451,16 +463,16 @@
 
   <!-- 발송처 -->
   <div class="field">
-    <label class="label">보내는 업체 (발송처)<span class="req">*</span></label>
-    <input type="text" id="sender" placeholder="업체명 입력 (자동완성 추천 또는 직접 입력)" autocomplete="off" />
+    <label class="label">보내는 업체 (발송처)<span class="req">*</span><span class="cho-badge">ㄱㄴㄷ 초성 검색</span></label>
+    <input type="text" id="sender" placeholder="업체명 또는 초성 (예: ㄷㅇㄱㅇ)" autocomplete="off" />
     <div class="suggest-box" id="sender-suggest"></div>
   </div>
 
   <!-- 받는 업체 -->
   <div class="field">
-    <label class="label">받는 업체(수신처)<span class="req">*</span><span class="hint">여러 곳 선택 가능 · Enter로 추가</span></label>
+    <label class="label">받는 업체(수신처)<span class="req">*</span><span class="cho-badge">ㄱㄴㄷ 초성 검색</span><span class="hint">여러 곳 · Enter로 추가</span></label>
     <div class="chip-area" id="chip-area">
-      <input type="text" id="receiver-input" placeholder="업체명 입력 후 Enter (목록에 없어도 OK)" autocomplete="off" />
+      <input type="text" id="receiver-input" placeholder="업체명 또는 초성 (예: ㅇㅇㅌㄹ)" autocomplete="off" />
     </div>
     <div class="suggest-box" id="receiver-suggest"></div>
   </div>
@@ -596,29 +608,56 @@
   updateTime();
   setInterval(updateTime, 30000);
 
+  // ===== 초성 검색 =====
+  const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  const isSyllable = ch => { const c = ch.charCodeAt(0); return c >= 0xAC00 && c <= 0xD7A3; };
+  const choOf = ch => isSyllable(ch) ? CHO[Math.floor((ch.charCodeAt(0) - 0xAC00) / 588)] : ch;
+
+  function charMatch(q, t, isLast) {
+    if (q === t) return true;
+    if (CHO.includes(q)) return choOf(t) === q;          // 자음만 친 글자
+    if (isLast && isSyllable(q) && isSyllable(t)) {      // 받침 치기 전 ('여' → '영')
+      const a = q.charCodeAt(0) - 0xAC00, b = t.charCodeAt(0) - 0xAC00;
+      return a % 28 === 0 && Math.floor(a / 28) === Math.floor(b / 28);
+    }
+    return false;
+  }
+
+  // 일치하는 시작 위치 반환 (없으면 -1)
+  function findMatch(text, query) {
+    const t = text.toLowerCase(), q = query.toLowerCase();
+    for (let i = 0; i + q.length <= t.length; i++) {
+      let ok = true;
+      for (let j = 0; j < q.length; j++) {
+        if (!charMatch(q[j], t[i + j], j === q.length - 1)) { ok = false; break; }
+      }
+      if (ok) return i;
+    }
+    return -1;
+  }
+
   // 자동완성 공통
   function setupAutocomplete(input, suggestBox, sourceList, onPick, getExclude) {
-    input.addEventListener('input', () => {
+    function render() {
       const q = input.value.trim();
       const exclude = getExclude ? getExclude() : [];
-      if (!q) { suggestBox.style.display='none'; return; }
-      const matches = sourceList.filter(c =>
-        c.toLowerCase().includes(q.toLowerCase()) && !exclude.includes(c)
-      );
-      if (matches.length === 0) { suggestBox.style.display='none'; return; }
-      suggestBox.innerHTML = matches.slice(0,10).map(c => {
-        const idx = c.toLowerCase().indexOf(q.toLowerCase());
-        const html = idx >= 0
-          ? c.slice(0,idx) + '<span class="match">' + c.slice(idx,idx+q.length) + '</span>' + c.slice(idx+q.length)
-          : c;
-        return `<div class="suggest-item" data-val="${c}">${html}</div>`;
-      }).join('');
+      if (!q) { suggestBox.style.display = 'none'; return; }
+      const matches = sourceList
+        .filter(c => !exclude.includes(c))
+        .map(c => ({ c, idx: findMatch(c, q) }))
+        .filter(m => m.idx >= 0)
+        .sort((a, b) => a.idx - b.idx);   // 앞글자부터 맞는 업체를 위로
+      if (matches.length === 0) { suggestBox.style.display = 'none'; return; }
+      suggestBox.innerHTML = matches.slice(0, 10).map(({ c, idx }) =>
+        `<div class="suggest-item" data-val="${c}">${c.slice(0, idx)}<span class="match">${c.slice(idx, idx + q.length)}</span>${c.slice(idx + q.length)}</div>`
+      ).join('');
       suggestBox.style.display = 'block';
       suggestBox.querySelectorAll('.suggest-item').forEach(el => {
-        el.onmousedown = (e) => { e.preventDefault(); onPick(el.dataset.val); suggestBox.style.display='none'; };
+        el.onmousedown = (e) => { e.preventDefault(); onPick(el.dataset.val); suggestBox.style.display = 'none'; };
       });
-    });
-    input.addEventListener('blur', () => setTimeout(() => suggestBox.style.display='none', 150));
+    }
+    input.addEventListener('input', render);
+    input.addEventListener('blur', () => setTimeout(() => suggestBox.style.display = 'none', 150));
   }
 
   // 발송처 자동완성 (SENDERS 사용)
